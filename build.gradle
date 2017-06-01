@@ -1,0 +1,168 @@
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'com.github.jengelman.gradle.plugins:shadow:2.0.0'
+    }
+}
+
+apply plugin: 'groovy'
+apply plugin: 'java'
+apply plugin: 'com.github.johnrengelman.shadow'
+apply plugin: 'maven'
+apply plugin: 'signing'
+
+group 'com.github.redhatqe.polarize'
+version '0.0.1-SNAPSHOT'
+sourceCompatibility = 1.8
+
+String projectURL = 'https://github.com/RedHatQE/polarize-reporter'
+String devURL = 'git@github.com:RedHatQE/polarize-reporter.git'
+String propFile = System.getProperty("user.home") + "/.polarize/byzantine-gradle.properties"
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+    jcenter()
+    maven {
+        url "https://oss.sonatype.org/content/repositories/snapshots"
+    }
+}
+
+dependencies {
+    compile 'org.codehaus.groovy:groovy-all:2.3.11'
+    compile group: 'com.fasterxml.jackson.core', name: 'jackson-core', version: '2.8.2'
+    compile group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.8.2'
+    compile group: 'org.apache.httpcomponents', name: 'httpclient', version: '4.5.2'
+    compile 'org.apache.httpcomponents:httpmime:4.5.2'
+    compile 'org.testng:testng:6.9.10'
+    compile group: 'net.sf.jopt-simple', name: 'jopt-simple', version: '5.0-beta-1'
+    //compile 'com.github.redhatqe.byzantine:byzantine:0.0.1-SNAPSHOT'
+    compile files('/home/stoner/Projects/byzantine/build/libs/byzantine-0.0.1-SNAPSHOT-all.jar')
+    compile group: 'org.apache.logging.log4j', name: 'log4j-api', version: '2.8.2'
+    compile group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.8.2'
+    compile group: 'org.apache.activemq', name: 'activemq-all', version: '5.14.5'
+    //compile group: 'com.github.redhatqe.polarize', name: 'polarize-bus', version: '0.0.1-SNAPSHOT'
+    compile files('/home/stoner/Projects/polarize-bus/build/libs/polarize-bus-0.0.1-SNAPSHOT-all.jar')
+
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+}
+
+class Creds {
+    public String user
+    public String pw
+
+    Creds(String u, String p) {
+        this.user = u
+        this.pw = p
+    }
+}
+
+def getCreds(String polarizePropertyFile) {
+    File f = new File(polarizePropertyFile)
+    Properties props = new Properties()
+    props.load(f.newDataInputStream())
+    return new Creds(props.getProperty("ossrhUsername"), props.getProperty("ossrhPassword"))
+}
+
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '3.5'
+}
+
+task myJavadocs(type: Javadoc) {
+    source = sourceSets.main.allJava
+    options.addStringOption('Xdoclint:none', '-quiet')
+    def cp = options.getClasspath()
+    cp.addAll(sourceSets.test.compileClasspath)
+}
+
+task javadocJar(type: Jar, dependsOn: myJavadocs) {
+    classifier = 'javadoc'
+    from javadoc
+}
+
+task sourcesJar(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+jar {
+    manifest {
+        attributes( 'Implementation-Title': 'byzantine'
+                  , 'Implementation-Version': version
+                  , 'Main-Class': 'com.github.redhatqe.polarize.reporter.XUnitReporter'
+                  )
+    }
+    from sourceSets.main.output
+    from sourceSets.main.allJava
+}
+
+shadowJar {
+    manifest {
+        attributes('Implementation-Title': 'byzantine'
+                  , 'Implementation-Version': version
+                  , 'Main-Class': 'com.github.redhatqe.polarize.reporter.XUnitReporter'
+                  )
+    }
+}
+
+artifacts {
+    archives jar, javadocJar, sourcesJar, shadowJar
+}
+
+signing {
+    sign configurations.archives
+}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            Creds creds = getCreds(propFile)
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+            repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                authentication(userName: creds.user, password: creds.pw)
+            }
+
+            snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+                authentication(userName: creds.user, password: creds.pw)
+            }
+
+            pom.project {
+                name project.name
+                packaging 'jar'
+                description 'Library to help with configuration'
+                url projectURL
+
+                scm {
+                    connection "scm:git:${projectURL}.git"
+                    developerConnection "scm:git:${devURL}"
+                    url projectURL
+                }
+
+                licenses {
+                    license {
+                        name 'The Apache License, Version 2.0'
+                        url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id 'stoner'
+                        name 'Sean Toner'
+                        email 'stoner@redhat.com'
+                    }
+                }
+            }
+        }
+    }
+}
+
+task classPath {
+    doLast {
+        println sourceSets.main.runtimeClasspath.asPath
+    }
+}
