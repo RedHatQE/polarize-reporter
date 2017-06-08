@@ -5,6 +5,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.redhatqe.byzantine.config.Serializer;
 import com.github.redhatqe.byzantine.utils.Tuple;
 
+
+import com.github.redhatqe.polarize.messagebus.CIBusListener;
+import com.github.redhatqe.polarize.messagebus.MessageHandler;
+import com.github.redhatqe.polarize.messagebus.MessageResult;
+
 import com.github.redhatqe.polarize.reporter.exceptions.*;
 import com.github.redhatqe.polarize.reporter.importer.ImporterRequest;
 import com.github.redhatqe.polarize.reporter.importer.xunit.*;
@@ -32,10 +37,11 @@ import org.testng.xml.XmlTest;
 
 import javax.jms.JMSException;
 import java.io.*;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
-import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -49,11 +55,20 @@ import java.util.stream.Collectors;
 public class XUnitReporter implements IReporter {
     private final static Logger logger = LogManager.getLogger(XUnitReporter.class.getSimpleName());
     public static String configPath = System.getProperty("polarize.config");
+    public static String envConfig = System.getenv("POLARIZE_CONFIG");
     public static File cfgFile = null;
     public static ReporterConfig config = new ReporterConfig();
     static {
+        if (envConfig != null)
+            configPath = envConfig;
         if (configPath != null)
             cfgFile = new File(configPath);
+        else {
+            String home = System.getProperty("user.home");
+            String path = FileSystems.getDefault().getPath(home, "/.polarize/polarize-config.yaml").toString();
+            cfgFile = new File(path);
+        }
+
         try {
             config = Serializer.fromYaml(ReporterConfig.class, cfgFile);
         } catch (IOException e) {
@@ -235,43 +250,56 @@ public class XUnitReporter implements IReporter {
      *
      * @return a Consumer function
      */
-    public static Consumer<Optional<ObjectNode>> xunitMessageHandler() {
-        return (node) -> {
-            if (!node.isPresent()) {
+    public static MessageHandler xunitMessageHandler() {
+        return (ObjectNode root) -> {
+            MessageResult result = new MessageResult();
+            if (root == null) {
                 logger.warn("No ObjectNode received from the Message");
+                result.setStatus(MessageResult.Status.NO_MESSAGE);
             }
             else {
-                JsonNode n = node.get();
-                if (n.size() == 0)
-                    return;
-                JsonNode root = n.get("root");
+                if (root.size() == 0) {
+                    result.setStatus(MessageResult.Status.EMPTY_MESSAGE);
+                    return result;
+                }
                 try {
-                    Boolean passed = root.get("status").textValue().equals("passed");
+                    JsonNode node = root.get("root");
+                    Boolean passed = node.get("status").textValue().equals("passed");
                     if (passed) {
                         logger.info("XUnit importer was successful");
-                        logger.info(root.get("testrun-url").textValue());
+                        logger.info(node.get("testrun-url").textValue());
+                        result.setStatus(MessageResult.Status.SUCCESS);
                     }
                     else {
                         // Figure out which one failed
-                        if (root.has("import-results")) {
-                            JsonNode results = root.get("import-results");
+                        result.setStatus(MessageResult.Status.FAILED);
+                        List<String> errs = new ArrayList<>();
+                        if (node.has("import-results")) {
+                            JsonNode results = node.get("import-results");
                             results.elements().forEachRemaining(element -> {
                                 if (element.has("status") && !element.get("status").textValue().equals("passed")) {
                                     if (element.has("suite-name")) {
                                         String suite = element.get("suite-name").textValue();
-                                        logger.info(suite + " failed to be updated");
+                                        String failed = suite + " failed to be updated";
+                                        logger.info(failed);
+                                        errs.add(failed);
                                         XUnitReporter.failedSuites.add(suite);
                                     }
                                 }
                             });
                         }
-                        else
-                            logger.error(root.get("message").asText());
+                        else {
+                            result.errorDetails = node.get("message").asText();
+                            logger.error(result.errorDetails);
+                        }
                     }
                 } catch (NullPointerException npe) {
-                    logger.error("Unknown format of message from bus");
+                    result.errorDetails = "NPE: Probably unknown format of message from bus";
+                    logger.error(result.errorDetails);
+                    result.setStatus(MessageResult.Status.NP_EXCEPTION);
                 }
             }
+            return result;
         };
     }
 
@@ -644,6 +672,13 @@ public class XUnitReporter implements IReporter {
     /**
      * Program to make an XUnit import request
      *
+     * --xunit /path/to/xunit
+     * --url http://path/to/endpoint
+     * --user user to http service
+     * --pass password for user
+     * --selector selector string to use
+     *
+     *
      * @param args url, user, pw, path to xml, selector
      */
     public static void main(String[] args) throws InterruptedException, ExecutionException, JMSException {
@@ -664,10 +699,11 @@ public class XUnitReporter implements IReporter {
         OptionSpec<String> xunitOpt = parser.accepts("xunit").withRequiredArg().ofType(String.class).required();
         OptionSpec<String> selectorOpt = parser.accepts("selector").withRequiredArg().ofType(String.class)
                 .defaultsTo(defaultSelector);
+        // TODO: Add --config-path for path to Config file
 
         OptionSet opts = parser.parse(args);
         String xunit = opts.valueOf(xunitOpt);
-        File xml = new File(xunit);
+        File xunitFile = new File(xunit);
         String url = opts.valueOf(urlOpt);
         String pw = opts.valueOf(pwOpt);
         String user = opts.valueOf(userOpt);
@@ -686,14 +722,18 @@ public class XUnitReporter implements IReporter {
         if (xunit.startsWith("http")) {
             Optional<File> body = ImporterRequest.get(xunit, user, pw, "/tmp/testng-polarion.xml");
             if (body.isPresent())
-                xml = body.get();
+                xunitFile = body.get();
             else
-                throw new ImportRequestError(String.format("Could not download %s", xml.toString()));
+                throw new ImportRequestError(String.format("Could not download %s", xunitFile.toString()));
         }
 
-        Optional<ObjectNode> node =
-                ImporterRequest.sendImportRequest(url, user, pw, xml, selector, XUnitReporter.xunitMessageHandler(),
-                configPath);
-        ObjectNode n = node.orElseThrow(() -> new JMSException("Did not get a response message from CI Bus"));
+        CIBusListener cbl = new CIBusListener(XUnitReporter.xunitMessageHandler());
+        //Optional<ObjectNode> node = ImporterRequest.sendImportRequest(cbl, url, user, pw, xml, selector, configPath);
+        Optional<MessageResult> res = ImporterRequest.sendImportRequest(cbl, selector, user, url, pw, xunitFile);
+        MessageResult n = res.orElseThrow(() -> new JMSException("Did not get a response message from CI Bus"));
+        if (!n.getStatus().equals(MessageResult.Status.SUCCESS)) {
+            String err = n.getStatus().toString();
+            throw new UnsuccessfulMessageError("The message failed with " + err);
+        }
     }
 }

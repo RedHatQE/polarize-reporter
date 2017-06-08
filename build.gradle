@@ -39,12 +39,13 @@ dependencies {
     compile 'org.testng:testng:6.9.10'
     compile group: 'net.sf.jopt-simple', name: 'jopt-simple', version: '5.0-beta-1'
     //compile 'com.github.redhatqe.byzantine:byzantine:0.0.1-SNAPSHOT'
-    compile files('/home/stoner/Projects/byzantine/build/libs/byzantine-0.0.1-SNAPSHOT-all.jar')
+    compile files('/home/stoner/Projects/byzantine/build/libs/byzantine-0.1.0-all.jar')
     compile group: 'org.apache.logging.log4j', name: 'log4j-api', version: '2.8.2'
     compile group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.8.2'
     compile group: 'org.apache.activemq', name: 'activemq-all', version: '5.14.5'
+
     //compile group: 'com.github.redhatqe.polarize', name: 'polarize-bus', version: '0.0.1-SNAPSHOT'
-    compile files('/home/stoner/Projects/polarize-bus/build/libs/polarize-bus-0.0.1-SNAPSHOT-all.jar')
+    compile files('/home/stoner/Projects/polarize-bus/build/libs/polarize-bus-0.0.2-all.jar')
 
     testCompile group: 'junit', name: 'junit', version: '4.12'
 }

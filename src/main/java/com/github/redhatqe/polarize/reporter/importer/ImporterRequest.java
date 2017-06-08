@@ -5,8 +5,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.redhatqe.byzantine.utils.IFileHelper;
 
 import com.github.redhatqe.polarize.messagebus.CIBusListener;
+import com.github.redhatqe.polarize.messagebus.IMessageListener;
+import com.github.redhatqe.polarize.messagebus.MessageResult;
 import com.github.redhatqe.polarize.reporter.jaxb.IJAXBHelper;
 import com.github.redhatqe.polarize.reporter.jaxb.JAXBHelper;
+import org.apache.activemq.memory.list.MessageList;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.auth.AuthScope;
@@ -23,7 +26,9 @@ import org.apache.http.ssl.SSLContextBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.jms.Connection;
 import javax.jms.JMSException;
+import javax.jms.MessageListener;
 import javax.net.ssl.SSLContext;
 import java.io.*;
 import java.net.MalformedURLException;
@@ -37,6 +42,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.KeyManagementException;
 import java.security.KeyStoreException;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -195,10 +201,15 @@ public class ImporterRequest {
      * @throws JMSException
      */
     public static Optional<ObjectNode>
-    sendImportRequest(String url, String user, String pw, File reportPath, String selector,
-                      Consumer<Optional<ObjectNode>> handler, String cfgPath)
+    sendImportRequest(CIBusListener cbl,
+                      String url,
+                      String user,
+                      String pw,
+                      File reportPath,
+                      String selector,
+                      String cfgPath)
             throws InterruptedException, ExecutionException, JMSException {
-        Supplier<Optional<ObjectNode>> sup = CIBusListener.getCIMessage(selector, cfgPath);
+        Supplier<Optional<ObjectNode>> sup = IMessageListener.getCIMessage(cbl, selector, cfgPath);
         CompletableFuture<Optional<ObjectNode>> future = CompletableFuture.supplyAsync(sup);
         // FIXME: While this async code works, it's possible for the calling thread to finish before the handler is
         // called.  Perhaps I can return the future, and the calling thread just joins()?
@@ -214,8 +225,28 @@ public class ImporterRequest {
         Optional<ObjectNode> maybeNode = future.get();
 
         // FIXME: Should I add a message handler here?  or just do it externally?
-        handler.accept(maybeNode);
         return maybeNode;
+    }
+
+    public static Optional<MessageResult>
+    sendImportRequest(CIBusListener cbl, String selector, String user, String url, String pw, File reportPath) {
+        Optional<Connection> conn = cbl.tapIntoMessageBus(selector, cbl.createListener(cbl.messageParser()));
+
+        logger.info("Making import request as user: " + user);
+        CloseableHttpResponse resp = ImporterRequest.post(url, reportPath, user, pw);
+        System.out.println(resp.toString());
+
+        cbl.listenUntil(1);
+        conn.ifPresent(c -> {
+            try {
+                c.close();
+            } catch (JMSException e) {
+                e.printStackTrace();
+            }
+        });
+        MessageResult result = cbl.messages.remove();
+        logger.info(String.format("The message response status is: %s", result.getStatus().name()));
+        return Optional.ofNullable(result);
     }
 
     /**

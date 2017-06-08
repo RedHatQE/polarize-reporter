@@ -1,7 +1,11 @@
 package com.github.redhatqe.polarize.reporter.configuration;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class Credentials {
+    @JsonProperty
     private String user;
+    @JsonProperty
     private String password;
 
     public Credentials() {
