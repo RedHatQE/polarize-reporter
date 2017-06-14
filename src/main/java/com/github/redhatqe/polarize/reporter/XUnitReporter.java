@@ -526,15 +526,15 @@ public class XUnitReporter implements IReporter {
         properties.add(projectID);
         ;
         Property testRunFinished = XUnitReporter.createProperty("polarion-set-testrun-finished",
-                config.getXunit().getCustom().get("test-suite").get("set-testrun-finished"));
+                config.getXunit().getCustom().getTestSuite().get("set-testrun-finished").toString());
         properties.add(testRunFinished);
 
         Property dryRun = XUnitReporter.createProperty("polarion-dry-run",
-                config.getXunit().getCustom().get("test-suite").get("dry-run"));
+                config.getXunit().getCustom().getTestSuite().get("dry-run").toString());
         properties.add(dryRun);
 
         Property includeSkipped = XUnitReporter.createProperty("polarion-include-skipped",
-                config.getXunit().getCustom().get("test-suite").get("include-skipped"));
+                config.getXunit().getCustom().getTestSuite().get("include-skipped").toString());
         properties.add(includeSkipped);
 
         Configurator cfg = XUnitReporter.createConditionalProperty(XUnitReporter.polarionResponse, responseName,
@@ -623,7 +623,7 @@ public class XUnitReporter implements IReporter {
                 break;
             case XUnitReporter.polarionCustom:
                 cfg = () -> {
-                    Map<String, String> customFields = config.getXunit().getCustom().get("properties");
+                    Map<String, String> customFields = config.getXunit().getCustom().getProperties();
                     if (customFields.isEmpty())
                         return;
                     customFields.entrySet().forEach(entry -> {

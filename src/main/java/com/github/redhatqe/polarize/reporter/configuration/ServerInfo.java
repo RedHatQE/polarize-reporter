@@ -44,4 +44,10 @@ public class ServerInfo {
         this.user = user;
         this.password = pw;
     }
+
+    public ServerInfo(ServerInfo si) {
+        this.url = si.getUrl();
+        this.user = si.getUser();
+        this.password = si.getPassword();
+    }
 }

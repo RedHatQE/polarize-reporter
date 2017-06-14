@@ -14,7 +14,7 @@ apply plugin: 'maven'
 apply plugin: 'signing'
 
 group 'com.github.redhatqe.polarize'
-version '0.0.1-SNAPSHOT'
+version '0.0.3-SNAPSHOT'
 sourceCompatibility = 1.8
 
 String projectURL = 'https://github.com/RedHatQE/polarize-reporter'
@@ -38,14 +38,12 @@ dependencies {
     compile 'org.apache.httpcomponents:httpmime:4.5.2'
     compile 'org.testng:testng:6.9.10'
     compile group: 'net.sf.jopt-simple', name: 'jopt-simple', version: '5.0-beta-1'
-    //compile 'com.github.redhatqe.byzantine:byzantine:0.0.1-SNAPSHOT'
-    compile files('/home/stoner/Projects/byzantine/build/libs/byzantine-0.1.0-all.jar')
     compile group: 'org.apache.logging.log4j', name: 'log4j-api', version: '2.8.2'
     compile group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.8.2'
     compile group: 'org.apache.activemq', name: 'activemq-all', version: '5.14.5'
 
-    //compile group: 'com.github.redhatqe.polarize', name: 'polarize-bus', version: '0.0.1-SNAPSHOT'
-    compile files('/home/stoner/Projects/polarize-bus/build/libs/polarize-bus-0.0.2-all.jar')
+    compile 'com.github.redhatqe.byzantine:byzantine:0.2.0-SNAPSHOT'
+    compile group: 'com.github.redhatqe.polarize', name: 'polarize-bus', version: '0.0.3-SNAPSHOT'
 
     testCompile group: 'junit', name: 'junit', version: '4.12'
 }
@@ -93,7 +91,7 @@ jar {
     manifest {
         attributes( 'Implementation-Title': 'byzantine'
                   , 'Implementation-Version': version
-                  , 'Main-Class': 'com.github.redhatqe.polarize.reporter.XUnitReporter'
+                  , 'Main-Class': 'com.github.redhatqe.polarize.reporter.ReporterCLI'
                   )
     }
     from sourceSets.main.output
@@ -104,7 +102,7 @@ shadowJar {
     manifest {
         attributes('Implementation-Title': 'byzantine'
                   , 'Implementation-Version': version
-                  , 'Main-Class': 'com.github.redhatqe.polarize.reporter.XUnitReporter'
+                  , 'Main-Class': 'com.github.redhatqe.polarize.reporter.ReporterCLI'
                   )
     }
 }
